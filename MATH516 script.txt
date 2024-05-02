@@ -1,0 +1,286 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.decomposition import PCA
+from sklearn.feature_selection import SelectKBest, f_classif
+from sklearn.linear_model import LassoCV
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+from sklearn.metrics import classification_report, accuracy_score
+import joblib
+
+class DataAnalyzer:
+    def __init__(self, filepath):
+        self.data = pd.read_csv(filepath)
+        self.process_grades()
+        self.preprocess_data()
+
+    def process_grades(self):
+        if self.data['Grade'].dtype == 'object':
+            self.data['Grade'] = LabelEncoder().fit_transform(self.data['Grade'].sort_values())
+
+    def preprocess_data(self):
+        # Exclude non-numeric columns for PCA and scaling
+        self.numeric_data = self.data.select_dtypes(include=[np.number])
+
+    def plot_grade_distribution(self):
+        plt.figure(figsize=(8, 6))
+        sns.countplot(x='Grade', data=self.data)
+        plt.title('Distribution of Meningioma Grades')
+        plt.xlabel('Meningioma Grade')
+        plt.ylabel('Count')
+        plt.show()
+
+    def detect_outliers_and_pca(self):
+        outliers_count = 0
+        for column in self.numeric_data.columns:
+            Q1 = self.numeric_data[column].quantile(0.25)
+            Q3 = self.numeric_data[column].quantile(0.75)
+            IQR = Q3 - Q1
+            outliers = self.numeric_data[(self.numeric_data[column] < (Q1 - 1.5 * IQR)) | (self.numeric_data[column] > (Q3 + 1.5 * IQR))]
+            outliers_count += len(outliers)
+        print(f'Total number of outliers detected: {outliers_count}')
+        scaler = StandardScaler()
+        pca_data = scaler.fit_transform(self.numeric_data)
+        pca = PCA(n_components=2)
+        components = pca.fit_transform(pca_data)
+        pca_df = pd.DataFrame(components, columns=['PC1', 'PC2'])
+        pca_df['Grade'] = self.data['Grade']
+        sns.scatterplot(x='PC1', y='PC2', hue='Grade', data=pca_df)
+        plt.title('PCA Plot')
+        plt.show()
+
+    def feature_selection(self):
+        X = self.numeric_data  # Ensure X is all numeric
+        y = self.data['Grade']
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        X_test_scaled = scaler.transform(X_test)
+        selector = SelectKBest(f_classif, k=10)
+        X_train_selected = selector.fit_transform(X_train_scaled, y_train)
+        X_test_selected = selector.transform(X_test_scaled)
+        print("Selected features (Filter method):", X_train.columns[selector.get_support()].tolist())
+        lasso = LassoCV(cv=5).fit(X_train_scaled, y_train)
+        selected_features_lasso = X_train.columns[(lasso.coef_ != 0)]
+        print("Selected features (LASSO):", selected_features_lasso.tolist())
+
+def main():
+    analyzer = DataAnalyzer('C:/Users/USER/Desktop/DataS/Assign 516/Dataset-_01.csv')
+    analyzer.plot_grade_distribution()
+    analyzer.detect_outliers_and_pca()
+    analyzer.feature_selection()
+
+if __name__ == "__main__":
+    main()
+
+import pandas as pd
+from sklearn.preprocessing import StandardScaler
+from sklearn.feature_selection import SelectKBest, f_classif
+from sklearn.linear_model import LassoCV  # Corrected import for LassoCV
+from sklearn.model_selection import train_test_split
+
+# Load the dataset
+data = pd.read_csv('C:/Users/USER/Desktop/DataS/Assign 516/standardized_dataset.csv')
+
+# Separate features and target
+X = data.iloc[:, 2:]  # Features
+y = data.iloc[:, 1]  # Target is the 'Grade' column
+
+# Split the data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+
+# Initialize and apply the StandardScaler
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# Convert scaled arrays back to DataFrame
+X_train_scaled = pd.DataFrame(X_train_scaled, columns=X.columns)
+X_test_scaled = pd.DataFrame(X_test_scaled, columns=X.columns)
+
+# Feature selection - Filter method
+selector = SelectKBest(f_classif, k=10)
+X_train_selected = selector.fit_transform(X_train_scaled, y_train)
+X_test_selected = selector.transform(X_test_scaled)  # Apply the same transformation to test data
+selected_features_filter = X_train_scaled.columns[selector.get_support()]
+
+# Feature selection - LASSO
+lasso = LassoCV(cv=5).fit(X_train_scaled, y_train)
+selected_features_lasso = X_train_scaled.columns[(lasso.coef_ != 0)]
+X_test_lasso = X_test_scaled[selected_features_lasso]
+
+# Export selected features to CSV for both training and testing datasets
+# Filter method
+X_train_filter = X_train_scaled[selected_features_filter]
+X_train_filter['Grade'] = y_train.reset_index(drop=True)
+X_train_filter.to_csv('C:/Users/USER/Desktop/DataS/Assign 516/X_train_filter_selected.csv', index=False)
+
+X_test_filter = X_test_scaled[selected_features_filter]
+X_test_filter['Grade'] = y_test.reset_index(drop=True)
+X_test_filter.to_csv('C:/Users/USER/Desktop/DataS/Assign 516/X_test_filter_selected.csv', index=False)
+
+# LASSO method
+X_train_lasso = X_train_scaled[selected_features_lasso]
+X_train_lasso['Grade'] = y_train.reset_index(drop=True)
+X_train_lasso.to_csv('C:/Users/USER/Desktop/DataS/Assign 516/X_train_lasso_selected.csv', index=False)
+
+X_test_lasso['Grade'] = y_test.reset_index(drop=True)
+X_test_lasso.to_csv('C:/Users/USER/Desktop/DataS/Assign 516/X_test_lasso_selected.csv', index=False)
+
+print("Training and test data with selected features saved successfully.")
+
+
+import pandas as pd
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+from sklearn.metrics import accuracy_score, classification_report
+
+# Setup the data processing and model training environment
+def setup_and_process_data(filepath):
+    dataset = pd.read_csv(filepath)
+    features = dataset.drop('Grade', axis=1)
+    target = dataset['Grade']
+    X_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.3, random_state=42)
+    normalizer = StandardScaler()
+    X_train_normalized = normalizer.fit_transform(X_train)
+    X_test_normalized = normalizer.transform(X_test)
+    return X_train_normalized, X_test_normalized, y_train, y_test
+    
+# Model training and validation function
+def optimize_and_evaluate(model, parameters, X_train, y_train, X_test, y_test):
+    optimizer = GridSearchCV(model, parameters, cv=5, scoring='accuracy')
+    optimizer.fit(X_train, y_train)
+    optimal_model = optimizer.best_estimator_
+    predictions = optimal_model.predict(X_test)
+    model_accuracy = accuracy_score(y_test, predictions)
+    evaluation_report = classification_report(y_test, predictions)
+    return optimal_model, model_accuracy, evaluation_report
+    
+# Configuration for hyperparameter tuning
+hyperparameters = {
+    'logisticregression': {'C': [0.1, 1, 10]},
+    'randomforest': {'max_depth': [10, 20, None], 'n_estimators': [50, 100, 200]},
+    'svc': {'C': [0.1, 1, 10], 'gamma': [0.001, 0.01, 0.1], 'kernel': ['rbf']}
+}
+
+# File paths for the datasets
+dataset_filter_path = 'C:/Users/USER/Desktop/DataS/Assign 516/X_train_filter_selected.csv'
+dataset_lasso_path = 'C:/Users/USER/Desktop/DataS/Assign 516/X_train_lasso_selected.csv'
+
+# Data preparation
+X_train_filter, X_test_filter, y_train_filter, y_test_filter = setup_and_process_data(dataset_filter_path)
+X_train_lasso, X_test_lasso, y_train_lasso, y_test_lasso = setup_and_process_data(dataset_lasso_path)
+
+# Model setup
+models = {
+    'LogisticRegression': LogisticRegression(random_state=42),
+    'RandomForest': RandomForestClassifier(random_state=42),
+    'SVC': SVC(random_state=42)
+}
+
+# Function to train and evaluate all models
+def train_and_evaluate_all_models():
+    print("Model evaluations for filter-selected features:")
+    for model_name, model in models.items():
+        trained_model, accuracy, report = optimize_and_evaluate(
+            model, hyperparameters[model_name.lower()], X_train_filter, y_train_filter, X_test_filter, y_test_filter
+        )
+        print(f"\n{model_name} Results:")
+        print(f"Accuracy: {accuracy}\n{report}")
+
+    print("\nModel evaluations for LASSO-selected features:")
+    for model_name, model in models.items():
+        trained_model, accuracy, report = optimize_and_evaluate(
+            model, hyperparameters[model_name.lower()], X_train_lasso, y_train_lasso, X_test_lasso, y_test_lasso
+        )
+        print(f"\n{model_name} Results:")
+        print(f"Accuracy: {accuracy}\n{report}")
+
+# Execute the function
+train_and_evaluate_all_models()
+
+
+import joblib
+
+# Store models trained on filter-selected and LASSO-selected datasets
+joblib.dump(logreg_model_filter, 'C:/Users/USER/Desktop/DataS/Assign 516/logreg_filter_model.pkl')
+joblib.dump(rf_model_filter, 'C:/Users/USER/Desktop/DataS/Assign 516/rf_filter_model.pkl')
+joblib.dump(svc_model_filter, 'C:/Users/USER/Desktop/DataS/Assign 516/svc_filter_model.pkl')
+
+joblib.dump(logreg_model_lasso, 'C:/Users/USER/Desktop/DataS/Assign 516/logreg_lasso_model.pkl')
+joblib.dump(rf_model_lasso, 'C:/Users/USER/Desktop/DataS/Assign 516/rf_lasso_model.pkl')
+joblib.dump(svc_model_lasso, 'C:/Users/USER/Desktop/DataS/Assign 516/svc_lasso_model.pkl')
+
+print("Models successfully stored.")
+
+import pandas as pd
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, classification_report
+import numpy as np
+import joblib
+
+# Function to load and assess data
+def retrieve_and_assess(file_path):
+    dataset = pd.read_csv(file_path)
+    features = dataset.drop('Grade', axis=1)
+    targets = dataset['Grade']
+    return features, targets
+
+# Calculate evaluation metrics for models
+def calculate_metrics(y_true, y_pred, classifier, features):
+    metrics_dict = {
+        'Accuracy': accuracy_score(y_true, y_pred),
+        'Precision': precision_score(y_true, y_pred, average='weighted'),
+        'Recall': recall_score(y_true, y_pred, average='weighted'),
+        'F1 Score': f1_score(y_true, y_pred, average='weighted')
+    }
+
+    if hasattr(classifier, "predict_proba"):
+        probabilities = classifier.predict_proba(features)
+        if y_true.nunique() == 2:  # Binary classification
+            metrics_dict['ROC AUC'] = roc_auc_score(y_true, probabilities[:, 1])
+        else:  # Multi-class classification
+            y_true_encoded = label_binarize(y_true, classes=np.unique(y_true))
+            metrics_dict['ROC AUC'] = roc_auc_score(y_true_encoded, probabilities, average='weighted', multi_class='ovr')
+
+    return metrics_dict
+
+# Load pre-saved models
+filter_logreg = joblib.load('C:/Users/USER/Desktop/DataS/Assign 516/logreg_filter_model.pkl')
+filter_rf = joblib.load('C:/Users/USER/Desktop/DataS/Assign 516/rf_filter_model.pkl')
+filter_svc = joblib.load('C:/Users/USER/Desktop/DataS/Assign 516/svc_filter_model.pkl')
+
+lasso_logreg = joblib.load('C:/Users/USER/Desktop/DataS/Assign 516/logreg_lasso_model.pkl')
+lasso_rf = joblib.load('C:/Users/USER/Desktop/DataS/Assign 516/rf_lasso_model.pkl')
+lasso_svc = joblib.load('C:/Users/USER/Desktop/DataS/Assign 516/svc_lasso_model.pkl')
+
+# Paths to dataset files
+filter_test_path = 'C:/Users/USER/Desktop/DataS/Assign 516/X_test_filter_selected.csv'
+lasso_test_path = 'C:/Users/USER/Desktop/DataS/Assign 516/X_test_lasso_selected.csv'
+
+# Load and evaluate test data
+X_filter, y_filter = retrieve_and_assess(filter_test_path)
+X_lasso, y_lasso = retrieve_and_assess(lasso_test_path)
+
+print("Evaluation on Filter-selected Features:")
+for model, name in zip([filter_logreg, filter_rf, filter_svc], ['Logistic Regression', 'Random Forest', 'SVC']):
+    predictions = model.predict(X_filter)
+    results = calculate_metrics(y_filter, predictions, model, X_filter)
+    print(f"\n{name}:")
+    for metric, value in results.items():
+        print(f"{metric}: {value:.4f}")
+
+print("\nEvaluation on LASSO-selected Features:")
+for model, name in zip([lasso_logreg, lasso_rf, lasso_svc], ['Logistic Regression', 'Random Forest', 'SVC']):
+    predictions = model.predict(X_lasso)
+    results = calculate_metrics(y_lasso, predictions, model, X_lasso)
+    print(f"\n{name}:")
+    for metric, value in results.items():
+        print(f"{metric}: {value:.4f}")
+
